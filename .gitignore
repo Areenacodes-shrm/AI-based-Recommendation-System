@@ -1,0 +1,53 @@
+# Compiled class files
+*.class
+bin/
+target/
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Executable JARs (optional, uncomment if you prefer not to commit prebuilt binaries)
+# recommendation-system.jar
+
+# Log files and runtime storage
+*.log
+data/
+logs/
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+
+# Virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+replay_pid*
+
+# IDE & Editor files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
