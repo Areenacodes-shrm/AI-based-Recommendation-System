@@ -1,0 +1,37 @@
+name: Java CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Compile Java Application
+      run: |
+        mkdir -p bin
+        javac -encoding UTF-8 -d bin $(find src/main/java -name "*.java")
+        cp -r src/main/resources/* bin/
+        jar cfe recommendation-system.jar com.recommendation.Main -C bin .
+
+    - name: Verify Application Execution Test
+      run: |
+        java -jar recommendation-system.jar 8080 &
+        SERVER_PID=$!
+        sleep 3
+        curl -s -f http://localhost:8080/api/users || exit 1
+        curl -s -f "http://localhost:8080/api/recommendations?userId=u1" || exit 1
+        curl -s -f http://localhost:8080/api/admin/analytics || exit 1
+        kill $SERVER_PID
