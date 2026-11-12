@@ -12,6 +12,7 @@ import com.pathpilot.model.StudentSkill;
 import com.pathpilot.repository.SkillRepository;
 import com.pathpilot.repository.StudentRepository;
 import com.pathpilot.service.StudentService;
+import com.pathpilot.util.PasswordHasher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,39 +43,29 @@ public class StudentServiceImpl implements StudentService {
         if (dto.getTargetRole() == null || dto.getTargetRole().isBlank()) {
             throw new InvalidRecommendationRequestException("Target role must not be blank");
         }
+        if (dto.getPassword() == null || dto.getPassword().isBlank() || dto.getPassword().length() < 8) {
+            throw new InvalidRecommendationRequestException("Password must be at least 8 characters long");
+        }
 
-        // Check for duplicate email
-        if (studentRepository.findByEmail(dto.getEmail().trim()).isPresent()) {
-            throw new DuplicateResourceException("Student", "email", dto.getEmail());
+        String normalizedEmail = dto.getEmail().trim().toLowerCase();
+        if (studentRepository.findByEmail(normalizedEmail).isPresent()) {
+            throw new DuplicateResourceException("Student", "email", normalizedEmail);
         }
 
         StudentProfile student = new StudentProfile(
                 null,
                 dto.getFullName().trim(),
-                dto.getEmail().trim(),
+                normalizedEmail,
                 dto.getTargetRole().trim(),
                 dto.getWeeklyHoursAvailable(),
                 dto.getMaxBudget(),
                 dto.getPreferredDifficulty(),
                 dto.getBio()
         );
+        student.setPasswordHash(PasswordHasher.hash(dto.getPassword()));
+        student.setDemoAccount(false);
 
-        // Map initial skills
-        List<StudentSkill> skills = new ArrayList<>();
-        if (dto.getSkills() != null) {
-            for (StudentSkillInputDto sInput : dto.getSkills()) {
-                Optional<Skill> skillOpt = Optional.empty();
-                if (sInput.getSkillId() != null) {
-                    skillOpt = skillRepository.findById(sInput.getSkillId());
-                } else if (sInput.getSkillName() != null) {
-                    skillOpt = skillRepository.findByName(sInput.getSkillName());
-                }
-
-                skillOpt.ifPresent(skill -> skills.add(new StudentSkill(
-                        null, skill, sInput.getProficiencyLevel(), sInput.getYearsExperience(), true
-                )));
-            }
-        }
+        List<StudentSkill> skills = resolveSkillsInput(dto.getSkills());
         student.setSkills(skills);
 
         return studentRepository.save(student);
@@ -103,7 +94,7 @@ public class StudentServiceImpl implements StudentService {
         if (dto.getTargetRole() != null && !dto.getTargetRole().isBlank()) {
             student.setTargetRole(dto.getTargetRole().trim());
         }
-        if (dto.getWeeklyHoursAvailable() > 0) {
+        if (dto.getWeeklyHoursAvailable() != null && dto.getWeeklyHoursAvailable() > 0) {
             student.setWeeklyHoursAvailable(dto.getWeeklyHoursAvailable());
         }
         if (dto.getMaxBudget() != null) {
@@ -117,7 +108,42 @@ public class StudentServiceImpl implements StudentService {
         }
 
         studentRepository.update(student);
-        return student;
+
+        if (dto.getSkills() != null) {
+            List<StudentSkill> updatedSkills = resolveSkillsInput(dto.getSkills());
+            studentRepository.saveStudentSkills(id, updatedSkills);
+            student.setSkills(updatedSkills);
+        }
+
+        return getStudentById(id);
+    }
+
+    private List<StudentSkill> resolveSkillsInput(List<StudentSkillInputDto> skillInputs) {
+        List<StudentSkill> skills = new ArrayList<>();
+        if (skillInputs == null) {
+            return skills;
+        }
+        for (StudentSkillInputDto sInput : skillInputs) {
+            Optional<Skill> skillOpt;
+            if (sInput.getSkillId() != null) {
+                skillOpt = skillRepository.findById(sInput.getSkillId());
+                if (skillOpt.isEmpty()) {
+                    throw new InvalidRecommendationRequestException("Unknown skill ID: " + sInput.getSkillId());
+                }
+            } else if (sInput.getSkillName() != null && !sInput.getSkillName().isBlank()) {
+                skillOpt = skillRepository.findByName(sInput.getSkillName());
+                if (skillOpt.isEmpty()) {
+                    throw new InvalidRecommendationRequestException("Unknown skill name: " + sInput.getSkillName());
+                }
+            } else {
+                continue;
+            }
+            Skill resolved = skillOpt.get();
+            skills.add(new StudentSkill(
+                    null, resolved, sInput.getProficiencyLevel(), sInput.getYearsExperience(), true
+            ));
+        }
+        return skills;
     }
 
     @Override

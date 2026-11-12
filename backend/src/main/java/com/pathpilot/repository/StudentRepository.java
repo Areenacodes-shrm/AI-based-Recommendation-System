@@ -1,5 +1,6 @@
 package com.pathpilot.repository;
 
+import com.pathpilot.dto.DemoProfileDto;
 import com.pathpilot.model.StudentProfile;
 import com.pathpilot.model.StudentSkill;
 
@@ -18,5 +19,6 @@ public interface StudentRepository {
     void saveStudentSkills(Long studentId, Collection<StudentSkill> skills);
     List<StudentSkill> findSkillsByStudentId(Long studentId);
     List<StudentProfile> findAll();
+    List<DemoProfileDto> findDemoProfiles();
     boolean deleteById(Long id);
 }

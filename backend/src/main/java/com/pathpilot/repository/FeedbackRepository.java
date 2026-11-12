@@ -1,5 +1,6 @@
 package com.pathpilot.repository;
 
+import com.pathpilot.model.FeedbackAction;
 import com.pathpilot.model.UserFeedback;
 
 import java.util.List;
@@ -13,5 +14,6 @@ public interface FeedbackRepository {
     List<UserFeedback> findByStudentId(Long studentId);
     List<UserFeedback> findByOpportunityId(Long opportunityId);
     Optional<UserFeedback> findByStudentAndOpportunity(Long studentId, Long opportunityId);
+    Optional<UserFeedback> findByStudentOpportunityAndAction(Long studentId, Long opportunityId, FeedbackAction actionType);
     List<UserFeedback> findAll();
 }

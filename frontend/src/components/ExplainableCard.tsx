@@ -13,13 +13,13 @@ import {
   ChevronUp,
   Star,
   CheckCircle,
-  AlertCircle,
   Clock,
-  DollarSign,
   Award,
   BookOpen,
   Briefcase,
   Code2,
+  GitCompare,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface ExplainableCardProps {
@@ -29,6 +29,9 @@ interface ExplainableCardProps {
   onAddToRoadmap?: (opportunityId: number) => void;
   onRate: (opportunityId: number, rating: number) => void;
   isSaved?: boolean;
+  isSelectedForCompare?: boolean;
+  onToggleCompare?: (opportunityId: number) => void;
+  compareDisabled?: boolean;
 }
 
 export const ExplainableCard: React.FC<ExplainableCardProps> = ({
@@ -38,11 +41,27 @@ export const ExplainableCard: React.FC<ExplainableCardProps> = ({
   onAddToRoadmap,
   onRate,
   isSaved = false,
+  isSelectedForCompare = false,
+  onToggleCompare,
+  compareDisabled = false,
 }) => {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [userRating, setUserRating] = useState<number | null>(null);
 
   const { opportunity, rankingScore, contentScore, skillScore, contextualScore, feedbackScore, explanation } = item;
+
+  const getConfidenceStyle = () => {
+    switch (explanation.relevanceBasis) {
+      case 'FEEDBACK_SUPPORTED':
+        return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25';
+      case 'PROFILE_BASED':
+        return 'bg-blue-500/10 text-blue-300 border-blue-500/25';
+      case 'LIMITED_DATA_COLD_START':
+        return 'bg-amber-500/10 text-amber-300 border-amber-500/25';
+      default:
+        return 'bg-navy-800 text-slate-300 border-navy-700';
+    }
+  };
 
   const getTypeBadge = (type: OpportunityType) => {
     switch (type) {
@@ -86,7 +105,30 @@ export const ExplainableCard: React.FC<ExplainableCardProps> = ({
             <span>{badge.label}</span>
           </span>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1.5">
+            {onToggleCompare && (
+              <button
+                type="button"
+                onClick={() => onToggleCompare(opportunity.id)}
+                disabled={compareDisabled && !isSelectedForCompare}
+                title={
+                  isSelectedForCompare
+                    ? 'Remove from side-by-side comparison'
+                    : compareDisabled
+                    ? 'Select up to 3 opportunities to compare'
+                    : 'Compare side-by-side'
+                }
+                className={`px-2 py-1 rounded-lg border text-[11px] font-semibold flex items-center space-x-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isSelectedForCompare
+                    ? 'bg-brand-teal/20 text-brand-tealLight border-brand-teal/40'
+                    : 'border-navy-700 text-slate-400 hover:text-white hover:bg-navy-800'
+                }`}
+              >
+                <GitCompare className="w-3.5 h-3.5" />
+                <span>{isSelectedForCompare ? 'Selected' : 'Compare'}</span>
+              </button>
+            )}
+
             <span
               className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                 matchPercent >= 80
@@ -96,7 +138,7 @@ export const ExplainableCard: React.FC<ExplainableCardProps> = ({
                   : 'bg-slate-700/30 text-slate-300 border-slate-600'
               }`}
             >
-              {matchPercent}% Match
+              {matchPercent}% Score
             </span>
 
             <button
@@ -120,6 +162,19 @@ export const ExplainableCard: React.FC<ExplainableCardProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Evidence / Cold-Start Basis Indicator */}
+        {explanation.confidenceLabel && (
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <span
+              title={explanation.confidenceNote || explanation.confidenceLabel}
+              className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${getConfidenceStyle()}`}
+            >
+              <ShieldAlert className="w-3 h-3" />
+              <span>{explanation.confidenceLabel}</span>
+            </span>
+          </div>
+        )}
 
         {/* Opportunity Title & Provider */}
         <h3 className="text-base font-bold text-white mb-1 hover:text-brand-violetLight transition-colors">
@@ -186,6 +241,12 @@ export const ExplainableCard: React.FC<ExplainableCardProps> = ({
               <span>
                 <strong className="text-white">Prerequisites:</strong> {explanation.prerequisitesReason}
               </span>
+            </div>
+          )}
+
+          {explanation.confidenceNote && (
+            <div className="pt-1 border-t border-navy-800/70 text-[11px] text-slate-400">
+              <strong className="text-slate-300">Data Basis:</strong> {explanation.confidenceNote}
             </div>
           )}
         </div>

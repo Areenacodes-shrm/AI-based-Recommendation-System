@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StudentProfile, DifficultyLevel } from '../types';
+import { StudentProfile, DifficultyLevel, ProficiencyLevel, Skill } from '../types';
 import { studentApi, catalogApi } from '../api/client';
-import { X, Save, Clock, DollarSign, Target, Award, User } from 'lucide-react';
+import { X, Save, Check, User } from 'lucide-react';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -16,24 +16,74 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   student,
   onProfileUpdated,
 }) => {
-  if (!isOpen || !student) return null;
-
-  const [fullName, setFullName] = useState(student.fullName);
-  const [targetRole, setTargetRole] = useState(student.targetRole);
-  const [weeklyHours, setWeeklyHours] = useState(student.weeklyHoursAvailable);
-  const [maxBudget, setMaxBudget] = useState(student.maxBudget);
-  const [difficulty, setDifficulty] = useState<DifficultyLevel>(student.preferredDifficulty);
-  const [bio, setBio] = useState(student.bio || '');
+  const [fullName, setFullName] = useState('');
+  const [targetRole, setTargetRole] = useState('');
+  const [weeklyHours, setWeeklyHours] = useState(15);
+  const [maxBudget, setMaxBudget] = useState(100);
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>('INTERMEDIATE');
+  const [bio, setBio] = useState('');
   const [roles, setRoles] = useState<string[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<
+    { skillId: number; skillName: string; proficiencyLevel: ProficiencyLevel; yearsExperience: number }[]
+  >([]);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     catalogApi.getRoles().then(setRoles).catch(console.error);
+    catalogApi.getSkills().then(setAvailableSkills).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (student && isOpen) {
+      setFullName(student.fullName);
+      setTargetRole(student.targetRole);
+      setWeeklyHours(student.weeklyHoursAvailable);
+      setMaxBudget(student.maxBudget);
+      setDifficulty(student.preferredDifficulty);
+      setBio(student.bio || '');
+      setSelectedSkills(
+        (student.skillsList || []).map((ss) => ({
+          skillId: ss.skill.id,
+          skillName: ss.skill.name,
+          proficiencyLevel: ss.proficiencyLevel,
+          yearsExperience: ss.yearsExperience ?? 1.0,
+        }))
+      );
+      setError(null);
+    }
+  }, [student, isOpen]);
+
+  if (!isOpen || !student) return null;
+
+  const toggleSkill = (skill: Skill) => {
+    const exists = selectedSkills.some((s) => s.skillId === skill.id);
+    if (exists) {
+      setSelectedSkills(selectedSkills.filter((s) => s.skillId !== skill.id));
+    } else {
+      setSelectedSkills([
+        ...selectedSkills,
+        {
+          skillId: skill.id,
+          skillName: skill.name,
+          proficiencyLevel: 'INTERMEDIATE',
+          yearsExperience: 1.0,
+        },
+      ]);
+    }
+  };
+
+  const updateSkillProficiency = (skillId: number, level: ProficiencyLevel) => {
+    setSelectedSkills(
+      selectedSkills.map((s) => (s.skillId === skillId ? { ...s, proficiencyLevel: level } : s))
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     try {
       const updated = await studentApi.update(student.id, {
         fullName,
@@ -42,11 +92,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         maxBudget,
         preferredDifficulty: difficulty,
         bio,
+        skills: selectedSkills,
       });
       onProfileUpdated(updated);
       onClose();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setError(err.message || 'Unable to save profile changes');
     } finally {
       setSaving(false);
     }
@@ -54,7 +105,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-navy-900 border border-navy-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl relative">
+      <div className="bg-navy-900 border border-navy-800 rounded-2xl w-full max-w-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-5 right-5 text-slate-400 hover:text-white"
@@ -68,9 +119,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
           <div>
             <h2 className="text-lg font-bold text-white">Student Profile & Preferences</h2>
-            <p className="text-xs text-slate-400">Modify your constraints and career trajectory settings</p>
+            <p className="text-xs text-slate-400">Modify your constraints, career goal, and registered skill competencies</p>
           </div>
         </div>
+
+        {error && (
+          <div className="p-3 mb-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-xl">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
@@ -80,6 +137,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               required
+              minLength={2}
               className="w-full bg-navy-950 border border-navy-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:ring-2 focus:ring-brand-violet"
             />
           </div>
@@ -148,30 +206,60 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <div>
             <label className="block text-slate-300 font-semibold mb-1">Bio & Learning Focus</label>
             <textarea
-              rows={3}
+              rows={2}
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               className="w-full bg-navy-950 border border-navy-700 rounded-xl px-3.5 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-violet"
             />
           </div>
 
-          {/* Current Skills list */}
-          {student.skillsList && student.skillsList.length > 0 && (
-            <div>
-              <label className="block text-slate-400 font-semibold mb-1.5 uppercase text-[10px] tracking-wider">
-                Current Registered Skills
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {student.skillsList.map((ss) => (
-                  <span
-                    key={ss.skill.id}
-                    className="px-2 py-1 rounded bg-navy-950 border border-navy-800 text-slate-300 text-[11px] flex items-center space-x-1"
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1.5">
+              Registered Skills ({selectedSkills.length} selected)
+            </label>
+            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 bg-navy-950 border border-navy-800 rounded-xl">
+              {availableSkills.map((skill) => {
+                const isSelected = selectedSkills.some((s) => s.skillId === skill.id);
+                return (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    onClick={() => toggleSkill(skill)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-all ${
+                      isSelected
+                        ? 'bg-brand-violet text-white shadow-sm'
+                        : 'bg-navy-900 text-slate-400 hover:text-white border border-navy-700'
+                    }`}
                   >
-                    <span>{ss.skill.name}</span>
-                    <span className="text-brand-teal font-semibold">({ss.proficiencyLevel})</span>
-                  </span>
-                ))}
-              </div>
+                    {isSelected && <Check className="w-3 h-3" />}
+                    <span>{skill.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {selectedSkills.length > 0 && (
+            <div className="space-y-2 max-h-36 overflow-y-auto">
+              {selectedSkills.map((s) => (
+                <div
+                  key={s.skillId}
+                  className="flex items-center justify-between p-2 bg-navy-950 border border-navy-800 rounded-xl"
+                >
+                  <span className="font-semibold text-white">{s.skillName}</span>
+                  <select
+                    aria-label={`Proficiency level for ${s.skillName}`}
+                    value={s.proficiencyLevel}
+                    onChange={(e) => updateSkillProficiency(s.skillId, e.target.value as ProficiencyLevel)}
+                    className="bg-navy-900 border border-navy-700 text-[11px] text-brand-teal font-semibold rounded-lg px-2 py-1"
+                  >
+                    <option value="BEGINNER">Beginner</option>
+                    <option value="INTERMEDIATE">Intermediate</option>
+                    <option value="ADVANCED">Advanced</option>
+                    <option value="EXPERT">Expert</option>
+                  </select>
+                </div>
+              ))}
             </div>
           )}
 
@@ -186,7 +274,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 rounded-xl bg-brand-violet hover:bg-brand-violetLight text-white font-bold flex items-center space-x-1.5 shadow-md shadow-brand-violet/25"
+              className="px-5 py-2 rounded-xl bg-brand-violet hover:bg-brand-violetLight text-white font-bold flex items-center space-x-1.5 shadow-md shadow-brand-violet/25 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
               <span>{saving ? 'Saving...' : 'Save Preferences'}</span>

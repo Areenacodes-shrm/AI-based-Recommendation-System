@@ -8,6 +8,9 @@ import com.pathpilot.model.RecommendationItem;
 import com.pathpilot.model.opportunity.Opportunity;
 import com.pathpilot.repository.OpportunityRepository;
 import com.pathpilot.repository.RecommendationRepository;
+import com.pathpilot.util.JdbcUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -17,9 +20,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.PreparedStatement;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -27,6 +30,8 @@ import java.util.Optional;
  */
 @Repository
 public class RecommendationRepositoryJdbc implements RecommendationRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(RecommendationRepositoryJdbc.class);
 
     private final JdbcTemplate jdbcTemplate;
     private final OpportunityRepository opportunityRepository;
@@ -53,7 +58,7 @@ public class RecommendationRepositoryJdbc implements RecommendationRepository {
                 return ps;
             }, keyHolder);
 
-            Long recommendationId = com.pathpilot.util.JdbcUtils.extractGeneratedId(keyHolder);
+            Long recommendationId = JdbcUtils.extractGeneratedId(keyHolder);
             if (recommendationId == null) {
                 throw new DatabaseOperationException("Failed to generate recommendation ID");
             }
@@ -70,7 +75,9 @@ public class RecommendationRepositoryJdbc implements RecommendationRepository {
                     if (item.getExplanation() != null) {
                         explanationJson = objectMapper.writeValueAsString(item.getExplanation());
                     }
-                } catch (JsonProcessingException ignored) {}
+                } catch (JsonProcessingException ex) {
+                    log.warn("Could not serialize explanation JSON for opportunity {}", item.getOpportunity().getId(), ex);
+                }
 
                 batchParams.add(new Object[]{
                         recommendationId,
@@ -122,10 +129,12 @@ public class RecommendationRepositoryJdbc implements RecommendationRepository {
                     if (json != null && !json.isBlank()) {
                         item.setExplanation(objectMapper.readValue(json, ExplanationData.class));
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ex) {
+                    log.warn("Could not parse explanation JSON for opportunity {}", oppId, ex);
+                }
 
                 return item;
-            }, recId).stream().filter(java.util.Objects::nonNull).toList();
+            }, recId).stream().filter(Objects::nonNull).toList();
         } catch (EmptyResultDataAccessException e) {
             return List.of();
         } catch (DataAccessException e) {

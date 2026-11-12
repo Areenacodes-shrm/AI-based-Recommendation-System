@@ -15,6 +15,7 @@ import java.util.Optional;
  */
 public interface OpportunityRepository {
     Optional<Opportunity> findById(Long id);
+    List<Opportunity> findByIds(Collection<Long> ids);
     List<Opportunity> findAll();
     List<Opportunity> search(String query, OpportunityType type, DifficultyLevel difficulty, BigDecimal maxCost, int limit, int offset);
     Opportunity save(Opportunity opportunity);

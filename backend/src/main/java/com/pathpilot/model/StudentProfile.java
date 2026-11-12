@@ -1,5 +1,7 @@
 package com.pathpilot.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -12,6 +14,9 @@ public class StudentProfile {
     private Long id;
     private String fullName;
     private String email;
+    @JsonIgnore
+    private String passwordHash;
+    private boolean demoAccount;
     private String targetRole;
     private int weeklyHoursAvailable;
     private BigDecimal maxBudget;
@@ -42,6 +47,27 @@ public class StudentProfile {
         this.bio = bio;
     }
 
+    /**
+     * Produces a detached in-memory copy for non-destructive what-if career simulations.
+     */
+    public StudentProfile copyForSimulation() {
+        StudentProfile copy = new StudentProfile();
+        copy.setId(this.id);
+        copy.setFullName(this.fullName);
+        copy.setEmail(this.email);
+        copy.setDemoAccount(this.demoAccount);
+        copy.setTargetRole(this.targetRole);
+        copy.setWeeklyHoursAvailable(this.weeklyHoursAvailable);
+        copy.setMaxBudget(this.maxBudget);
+        copy.setPreferredDifficulty(this.preferredDifficulty);
+        copy.setBio(this.bio);
+        for (StudentSkill ss : this.skillsMap.values()) {
+            copy.addSkill(new StudentSkill(ss.getStudentId(), ss.getSkill(), ss.getProficiencyLevel(),
+                    ss.getYearsExperience(), ss.isVerified()));
+        }
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }
@@ -64,6 +90,23 @@ public class StudentProfile {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    @JsonIgnore
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
+    public boolean isDemoAccount() {
+        return demoAccount;
+    }
+
+    public void setDemoAccount(boolean demoAccount) {
+        this.demoAccount = demoAccount;
     }
 
     public String getTargetRole() {

@@ -30,7 +30,11 @@ public class SkillGapServiceImpl implements SkillGapService {
     public SkillGapAnalysisDto analyzeSkillGap(Long studentId, String targetRole) {
         StudentProfile student = studentRepository.findById(studentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", studentId));
+        return analyzeSkillGapForProfile(student, targetRole);
+    }
 
+    @Override
+    public SkillGapAnalysisDto analyzeSkillGapForProfile(StudentProfile student, String targetRole) {
         String role = (targetRole != null && !targetRole.isBlank()) ? targetRole : student.getTargetRole();
         List<TargetRoleSkill> requiredRoleSkills = skillRepository.findRoleSkills(role);
 

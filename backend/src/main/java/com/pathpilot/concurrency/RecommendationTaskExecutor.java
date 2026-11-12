@@ -87,6 +87,31 @@ public class RecommendationTaskExecutor {
                 .toList();
     }
 
+    public boolean isHealthy() {
+        return !executorService.isShutdown() && !executorService.isTerminated();
+    }
+
+    public int getActiveThreadCount() {
+        if (executorService instanceof ThreadPoolExecutor tpe) {
+            return tpe.getActiveCount();
+        }
+        return 0;
+    }
+
+    public int getQueueSize() {
+        if (executorService instanceof ThreadPoolExecutor tpe) {
+            return tpe.getQueue().size();
+        }
+        return 0;
+    }
+
+    public int getCorePoolSize() {
+        if (executorService instanceof ThreadPoolExecutor tpe) {
+            return tpe.getCorePoolSize();
+        }
+        return 0;
+    }
+
     @PreDestroy
     public void shutdown() {
         log.info("Gracefully shutting down RecommendationTaskExecutor...");

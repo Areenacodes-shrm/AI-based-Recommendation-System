@@ -1,6 +1,7 @@
 package com.pathpilot.controller;
 
 import com.pathpilot.dto.ApiResponse;
+import com.pathpilot.exception.InvalidRecommendationRequestException;
 import com.pathpilot.exception.ResourceNotFoundException;
 import com.pathpilot.model.DifficultyLevel;
 import com.pathpilot.model.OpportunityType;
@@ -30,6 +31,15 @@ public class OpportunityController {
             @RequestParam(required = false) BigDecimal maxCost,
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(defaultValue = "0") int offset) {
+        if (limit < 1 || limit > 100) {
+            throw new InvalidRecommendationRequestException("Parameter 'limit' must be between 1 and 100.");
+        }
+        if (offset < 0) {
+            throw new InvalidRecommendationRequestException("Parameter 'offset' cannot be negative.");
+        }
+        if (maxCost != null && maxCost.compareTo(BigDecimal.ZERO) < 0) {
+            throw new InvalidRecommendationRequestException("Parameter 'maxCost' cannot be negative.");
+        }
         List<Opportunity> results = opportunityRepository.search(query, type, difficulty, maxCost, limit, offset);
         return ResponseEntity.ok(ApiResponse.success(results));
     }

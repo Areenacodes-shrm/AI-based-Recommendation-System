@@ -1,8 +1,10 @@
 package com.pathpilot.repository.jdbc;
 
+import com.pathpilot.dto.DemoProfileDto;
 import com.pathpilot.exception.DatabaseOperationException;
 import com.pathpilot.model.*;
 import com.pathpilot.repository.StudentRepository;
+import com.pathpilot.util.JdbcUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -12,7 +14,8 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.*;
+import java.sql.PreparedStatement;
+import java.sql.Timestamp;
 import java.util.*;
 
 /**
@@ -20,6 +23,9 @@ import java.util.*;
  */
 @Repository
 public class StudentRepositoryJdbc implements StudentRepository {
+
+    private static final String BASE_COLUMNS =
+            "id, full_name, email, password_hash, is_demo, target_role, weekly_hours_available, max_budget, preferred_difficulty, bio, created_at, updated_at";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -32,6 +38,8 @@ public class StudentRepositoryJdbc implements StudentRepository {
         student.setId(rs.getLong("id"));
         student.setFullName(rs.getString("full_name"));
         student.setEmail(rs.getString("email"));
+        student.setPasswordHash(rs.getString("password_hash"));
+        student.setDemoAccount(rs.getBoolean("is_demo"));
         student.setTargetRole(rs.getString("target_role"));
         student.setWeeklyHoursAvailable(rs.getInt("weekly_hours_available"));
         student.setMaxBudget(rs.getBigDecimal("max_budget"));
@@ -48,8 +56,7 @@ public class StudentRepositoryJdbc implements StudentRepository {
 
     @Override
     public Optional<StudentProfile> findById(Long id) {
-        String sql = "SELECT id, full_name, email, target_role, weekly_hours_available, max_budget, preferred_difficulty, bio, created_at, updated_at " +
-                     "FROM students WHERE id = ?";
+        String sql = "SELECT " + BASE_COLUMNS + " FROM students WHERE id = ?";
         try {
             StudentProfile student = jdbcTemplate.queryForObject(sql, studentRowMapper, id);
             if (student != null) {
@@ -66,8 +73,7 @@ public class StudentRepositoryJdbc implements StudentRepository {
 
     @Override
     public Optional<StudentProfile> findByEmail(String email) {
-        String sql = "SELECT id, full_name, email, target_role, weekly_hours_available, max_budget, preferred_difficulty, bio, created_at, updated_at " +
-                     "FROM students WHERE LOWER(email) = LOWER(?)";
+        String sql = "SELECT " + BASE_COLUMNS + " FROM students WHERE LOWER(email) = LOWER(?)";
         try {
             StudentProfile student = jdbcTemplate.queryForObject(sql, studentRowMapper, email);
             if (student != null) {
@@ -78,30 +84,32 @@ public class StudentRepositoryJdbc implements StudentRepository {
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         } catch (DataAccessException e) {
-            throw new DatabaseOperationException("Failed to find student by email: " + email, e);
+            throw new DatabaseOperationException("Failed to find student by email", e);
         }
     }
 
     @Override
     @Transactional
     public StudentProfile save(StudentProfile student) {
-        String sql = "INSERT INTO students (full_name, email, target_role, weekly_hours_available, max_budget, preferred_difficulty, bio) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO students (full_name, email, password_hash, is_demo, target_role, weekly_hours_available, max_budget, preferred_difficulty, bio) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try {
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update(connection -> {
-                PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+                PreparedStatement ps = connection.prepareStatement(sql, new String[]{"id"});
                 ps.setString(1, student.getFullName());
                 ps.setString(2, student.getEmail());
-                ps.setString(3, student.getTargetRole());
-                ps.setInt(4, student.getWeeklyHoursAvailable());
-                ps.setBigDecimal(5, student.getMaxBudget());
-                ps.setString(6, student.getPreferredDifficulty().name());
-                ps.setString(7, student.getBio());
+                ps.setString(3, student.getPasswordHash() != null ? student.getPasswordHash() : "");
+                ps.setBoolean(4, student.isDemoAccount());
+                ps.setString(5, student.getTargetRole());
+                ps.setInt(6, student.getWeeklyHoursAvailable());
+                ps.setBigDecimal(7, student.getMaxBudget());
+                ps.setString(8, student.getPreferredDifficulty().name());
+                ps.setString(9, student.getBio());
                 return ps;
             }, keyHolder);
 
-            Long generatedId = com.pathpilot.util.JdbcUtils.extractGeneratedId(keyHolder);
+            Long generatedId = JdbcUtils.extractGeneratedId(keyHolder);
             if (generatedId != null) {
                 student.setId(generatedId);
             }
@@ -112,7 +120,7 @@ public class StudentRepositoryJdbc implements StudentRepository {
 
             return student;
         } catch (DataAccessException e) {
-            throw new DatabaseOperationException("Failed to save student profile: " + student.getEmail(), e);
+            throw new DatabaseOperationException("Failed to save student profile", e);
         }
     }
 
@@ -130,10 +138,6 @@ public class StudentRepositoryJdbc implements StudentRepository {
                     student.getPreferredDifficulty().name(),
                     student.getBio(),
                     student.getId());
-
-            if (!student.getSkillsMap().isEmpty()) {
-                saveStudentSkills(student.getId(), student.getSkillsList());
-            }
         } catch (DataAccessException e) {
             throw new DatabaseOperationException("Failed to update student profile: " + student.getId(), e);
         }
@@ -196,8 +200,7 @@ public class StudentRepositoryJdbc implements StudentRepository {
 
     @Override
     public List<StudentProfile> findAll() {
-        String sql = "SELECT id, full_name, email, target_role, weekly_hours_available, max_budget, preferred_difficulty, bio, created_at, updated_at " +
-                     "FROM students ORDER BY id ASC";
+        String sql = "SELECT " + BASE_COLUMNS + " FROM students ORDER BY id ASC";
         try {
             List<StudentProfile> students = jdbcTemplate.query(sql, studentRowMapper);
             for (StudentProfile s : students) {
@@ -206,6 +209,20 @@ public class StudentRepositoryJdbc implements StudentRepository {
             return students;
         } catch (DataAccessException e) {
             throw new DatabaseOperationException("Failed to fetch students list", e);
+        }
+    }
+
+    @Override
+    public List<DemoProfileDto> findDemoProfiles() {
+        String sql = "SELECT id, full_name, target_role FROM students WHERE is_demo = TRUE ORDER BY id ASC";
+        try {
+            return jdbcTemplate.query(sql, (rs, rowNum) -> new DemoProfileDto(
+                    rs.getLong("id"),
+                    rs.getString("full_name"),
+                    rs.getString("target_role")
+            ));
+        } catch (DataAccessException e) {
+            throw new DatabaseOperationException("Failed to fetch demo student profiles", e);
         }
     }
 

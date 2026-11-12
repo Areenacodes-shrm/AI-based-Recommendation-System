@@ -6,6 +6,7 @@ import com.pathpilot.model.PlanStatus;
 import com.pathpilot.model.opportunity.Opportunity;
 import com.pathpilot.repository.LearningPlanRepository;
 import com.pathpilot.repository.OpportunityRepository;
+import com.pathpilot.util.JdbcUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -15,8 +16,8 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
-import java.sql.Statement;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -59,7 +60,7 @@ public class LearningPlanRepositoryJdbc implements LearningPlanRepository {
         try {
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update(con -> {
-                PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+                PreparedStatement ps = con.prepareStatement(sql, new String[]{"id"});
                 ps.setLong(1, item.getStudentId());
                 ps.setLong(2, item.getOpportunityId());
                 ps.setInt(3, item.getSequenceOrder());
@@ -69,7 +70,7 @@ public class LearningPlanRepositoryJdbc implements LearningPlanRepository {
                 return ps;
             }, keyHolder);
 
-            Long key = com.pathpilot.util.JdbcUtils.extractGeneratedId(keyHolder);
+            Long key = JdbcUtils.extractGeneratedId(keyHolder);
             if (key != null) {
                 item.setId(key);
             }
@@ -116,18 +117,43 @@ public class LearningPlanRepositoryJdbc implements LearningPlanRepository {
     }
 
     @Override
+    public Optional<LearningPlanItem> findByStudentIdAndOpportunityId(Long studentId, Long opportunityId) {
+        String sql = "SELECT id, student_id, opportunity_id, sequence_order, status, " +
+                     "target_completion_weeks, prerequisite_note, created_at, updated_at " +
+                     "FROM learning_plans WHERE student_id = ? AND opportunity_id = ? LIMIT 1";
+        try {
+            LearningPlanItem item = jdbcTemplate.queryForObject(sql, planRowMapper, studentId, opportunityId);
+            if (item != null) {
+                opportunityRepository.findById(item.getOpportunityId()).ifPresent(item::setOpportunity);
+                return Optional.of(item);
+            }
+            return Optional.empty();
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        } catch (DataAccessException e) {
+            throw new DatabaseOperationException("Error checking learning plan entry", e);
+        }
+    }
+
+    @Override
     public void updateStatus(Long id, PlanStatus status, Integer targetCompletionWeeks) {
-        StringBuilder sql = new StringBuilder("UPDATE learning_plans SET updated_at = CURRENT_TIMESTAMP ");
+        StringBuilder sql = new StringBuilder("UPDATE learning_plans SET updated_at = CURRENT_TIMESTAMP");
+        List<Object> params = new ArrayList<>();
+
         if (status != null) {
-            sql.append(", status = '").append(status.name()).append("' ");
+            sql.append(", status = ?");
+            params.add(status.name());
         }
         if (targetCompletionWeeks != null && targetCompletionWeeks > 0) {
-            sql.append(", target_completion_weeks = ").append(targetCompletionWeeks).append(" ");
+            sql.append(", target_completion_weeks = ?");
+            params.add(targetCompletionWeeks);
         }
-        sql.append("WHERE id = ?");
+
+        sql.append(" WHERE id = ?");
+        params.add(id);
 
         try {
-            jdbcTemplate.update(sql.toString(), id);
+            jdbcTemplate.update(sql.toString(), params.toArray());
         } catch (DataAccessException e) {
             throw new DatabaseOperationException("Error updating learning plan status for item: " + id, e);
         }

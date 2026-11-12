@@ -107,6 +107,27 @@ public class ExplainabilityService {
             exp.setDifficultyAssessment("Accessible refresher level for rapid completion and confidence building.");
         }
 
+        // 7. Data-Basis / Cold-Start Indicator (heuristic signal, not calibrated probability)
+        int skillCount = studentSkills.size();
+        int feedbackCount = context != null ? context.getStudentInteractedOpportunityIds().size() : 0;
+        if (skillCount == 0) {
+            exp.setRelevanceBasis(RelevanceBasis.LIMITED_DATA_COLD_START);
+            exp.setConfidenceLabel("Limited Data (Cold-Start Heuristic)");
+            exp.setConfidenceNote("Generated from target role, schedule, and budget alone because no skills are listed yet. Add skills or rate items to refine alignment.");
+        } else if (feedbackCount > 0) {
+            exp.setRelevanceBasis(RelevanceBasis.FEEDBACK_SUPPORTED);
+            exp.setConfidenceLabel("Profile + Feedback Heuristic");
+            exp.setConfidenceNote(String.format(
+                    "Heuristic alignment score combining %d skill(s), role constraints, and %d recorded interaction(s) — not a calibrated statistical probability.",
+                    skillCount, feedbackCount));
+        } else {
+            exp.setRelevanceBasis(RelevanceBasis.PROFILE_BASED);
+            exp.setConfidenceLabel("Profile-Based Heuristic");
+            exp.setConfidenceNote(String.format(
+                    "Heuristic alignment score based on %d listed skill(s) and role constraints — not a calibrated statistical probability. Save or rate items to personalize further.",
+                    skillCount));
+        }
+
         return exp;
     }
 }

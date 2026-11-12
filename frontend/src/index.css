@@ -36,3 +36,36 @@
   box-shadow: 0 10px 30px -10px rgba(139, 92, 246, 0.15);
   border-color: rgba(139, 92, 246, 0.4);
 }
+
+@media print {
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+
+  body,
+  .bg-navy-950,
+  .bg-navy-900,
+  .bg-navy-850 {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  .text-white,
+  .text-slate-100,
+  .text-slate-200,
+  .text-slate-300 {
+    color: #0f172a !important;
+  }
+
+  .text-slate-400,
+  .text-slate-500 {
+    color: #475569 !important;
+  }
+
+  .border-navy-800,
+  .border-navy-700 {
+    border-color: #cbd5e1 !important;
+  }
+}

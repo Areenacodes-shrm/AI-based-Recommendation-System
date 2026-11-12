@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Opportunity, OpportunityType, DifficultyLevel } from '../types';
-import { catalogApi, feedbackApi } from '../api/client';
-import { Search, Filter, BookOpen, Code2, Briefcase, Award, ExternalLink, Bookmark, CheckCircle } from 'lucide-react';
+import { Opportunity } from '../types';
+import { catalogApi, feedbackApi, roadmapApi } from '../api/client';
+import { Search, ExternalLink, Bookmark, PlusCircle, Sparkles } from 'lucide-react';
 
 interface CatalogPageProps {
   studentId: number | null;
@@ -14,6 +14,12 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ studentId }) => {
   const [difficulty, setDifficulty] = useState<string>('ALL');
   const [loading, setLoading] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const searchCatalog = async () => {
     setLoading(true);
@@ -33,6 +39,8 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ studentId }) => {
           if (fb.actionType === 'SAVED') s.add(fb.opportunityId);
         }
         setSavedIds(s);
+      } else {
+        setSavedIds(new Set());
       }
     } catch (err) {
       console.error(err);
@@ -43,7 +51,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ studentId }) => {
 
   useEffect(() => {
     searchCatalog();
-  }, [type, difficulty]);
+  }, [type, difficulty, studentId]);
 
   const handleSave = async (oppId: number) => {
     if (!studentId) return;
@@ -53,13 +61,31 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ studentId }) => {
         actionType: 'SAVED',
       });
       setSavedIds(new Set([...savedIds, oppId]));
-    } catch (err) {
-      console.error(err);
+      showToast('Saved opportunity to your bookmarks!');
+    } catch (err: any) {
+      showToast(err.message || 'Unable to save opportunity');
+    }
+  };
+
+  const handleAddToRoadmap = async (oppId: number) => {
+    if (!studentId) return;
+    try {
+      await roadmapApi.addItem(studentId, oppId);
+      showToast('Added opportunity to your learning roadmap!');
+    } catch (err: any) {
+      showToast(err.message || 'Unable to add opportunity to roadmap');
     }
   };
 
   return (
     <div className="space-y-6">
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-brand-violet text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-semibold flex items-center space-x-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-brand-teal" />
+          <span>{toast}</span>
+        </div>
+      )}
+
       {/* Search Header */}
       <div className="bg-gradient-to-r from-navy-900 via-navy-850 to-navy-900 border border-navy-800 rounded-2xl p-6">
         <h1 className="text-2xl font-extrabold text-white tracking-tight">
@@ -175,18 +201,30 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ studentId }) => {
                 )}
               </div>
 
-              <div className="pt-3 border-t border-navy-800 flex items-center justify-between">
+              <div className="pt-3 border-t border-navy-800 flex items-center justify-between gap-2">
                 <span className="text-xs text-slate-400 font-medium">~{opp.estimatedHours} hrs total</span>
-                {opp.url && (
-                  <a
-                    href={opp.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 bg-brand-violet hover:bg-brand-violetLight text-white rounded text-xs flex items-center"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
+                <div className="flex items-center space-x-2">
+                  {studentId && (
+                    <button
+                      onClick={() => handleAddToRoadmap(opp.id)}
+                      className="px-2.5 py-1 rounded-lg bg-navy-800 hover:bg-navy-700 text-slate-200 border border-navy-700 text-[11px] font-semibold flex items-center space-x-1 transition-colors"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5 text-brand-teal" />
+                      <span>Roadmap</span>
+                    </button>
+                  )}
+                  {opp.url && (
+                    <a
+                      href={opp.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 bg-brand-violet hover:bg-brand-violetLight text-white rounded text-xs flex items-center"
+                      title="Open Opportunity Resource"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           ))}

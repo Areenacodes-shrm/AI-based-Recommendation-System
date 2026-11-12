@@ -13,6 +13,7 @@ public interface LearningPlanRepository {
     LearningPlanItem save(LearningPlanItem item);
     List<LearningPlanItem> findByStudentId(Long studentId);
     Optional<LearningPlanItem> findById(Long id);
+    Optional<LearningPlanItem> findByStudentIdAndOpportunityId(Long studentId, Long opportunityId);
     void updateStatus(Long id, PlanStatus status, Integer targetCompletionWeeks);
     boolean deleteById(Long id);
     void clearForStudent(Long studentId);

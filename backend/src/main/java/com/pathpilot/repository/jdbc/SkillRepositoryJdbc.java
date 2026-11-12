@@ -5,6 +5,7 @@ import com.pathpilot.model.ProficiencyLevel;
 import com.pathpilot.model.Skill;
 import com.pathpilot.model.TargetRoleSkill;
 import com.pathpilot.repository.SkillRepository;
+import com.pathpilot.util.JdbcUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,7 +15,6 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
-import java.sql.Statement;
 import java.util.List;
 import java.util.Optional;
 
@@ -80,7 +80,7 @@ public class SkillRepositoryJdbc implements SkillRepository {
         try {
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update(con -> {
-                PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+                PreparedStatement ps = con.prepareStatement(sql, new String[]{"id"});
                 ps.setString(1, skill.getName());
                 ps.setString(2, skill.getCategory());
                 ps.setString(3, skill.getDomain());
@@ -88,7 +88,7 @@ public class SkillRepositoryJdbc implements SkillRepository {
                 return ps;
             }, keyHolder);
 
-            Long key = com.pathpilot.util.JdbcUtils.extractGeneratedId(keyHolder);
+            Long key = JdbcUtils.extractGeneratedId(keyHolder);
             if (key != null) {
                 skill.setId(key);
             }

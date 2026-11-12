@@ -1,26 +1,13 @@
--- PathPilot AI Database Schema (MySQL 8.0 & Compatible)
--- Clean and idempotent initialization
-
-DROP TABLE IF EXISTS learning_plans;
-DROP TABLE IF EXISTS user_feedback;
-DROP TABLE IF EXISTS recommendation_items;
-DROP TABLE IF EXISTS recommendations;
-DROP TABLE IF EXISTS opportunity_skills;
-DROP TABLE IF EXISTS certification_details;
-DROP TABLE IF EXISTS internship_details;
-DROP TABLE IF EXISTS project_details;
-DROP TABLE IF EXISTS course_details;
-DROP TABLE IF EXISTS opportunities;
-DROP TABLE IF EXISTS target_role_skills;
-DROP TABLE IF EXISTS student_skills;
-DROP TABLE IF EXISTS skills;
-DROP TABLE IF EXISTS students;
+-- PathPilot AI Database Schema (MySQL 8.0 & H2 MySQL-mode Compatible)
+-- Non-destructive, idempotent initialization preserving existing user data
 
 -- 1. Students Profile Table
-CREATE TABLE students (
+CREATE TABLE IF NOT EXISTS students (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     full_name VARCHAR(150) NOT NULL,
     email VARCHAR(150) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL DEFAULT '',
+    is_demo BOOLEAN NOT NULL DEFAULT FALSE,
     target_role VARCHAR(100) NOT NULL,
     weekly_hours_available INT NOT NULL DEFAULT 15,
     max_budget DECIMAL(10, 2) NOT NULL DEFAULT 100.00,
@@ -31,7 +18,7 @@ CREATE TABLE students (
 );
 
 -- 2. Skills Catalog
-CREATE TABLE skills (
+CREATE TABLE IF NOT EXISTS skills (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     category VARCHAR(60) NOT NULL,
@@ -40,10 +27,10 @@ CREATE TABLE skills (
 );
 
 -- 3. Student Skills with Proficiency
-CREATE TABLE student_skills (
+CREATE TABLE IF NOT EXISTS student_skills (
     student_id BIGINT NOT NULL,
     skill_id BIGINT NOT NULL,
-    proficiency_level VARCHAR(30) NOT NULL, -- BEGINNER, INTERMEDIATE, ADVANCED, EXPERT
+    proficiency_level VARCHAR(30) NOT NULL,
     years_experience DECIMAL(4, 1) DEFAULT 0.0,
     is_verified BOOLEAN DEFAULT FALSE,
     PRIMARY KEY (student_id, skill_id),
@@ -52,34 +39,39 @@ CREATE TABLE student_skills (
 );
 
 -- 4. Target Role Skills Mapping
-CREATE TABLE target_role_skills (
+CREATE TABLE IF NOT EXISTS target_role_skills (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     role_name VARCHAR(100) NOT NULL,
     skill_id BIGINT NOT NULL,
     minimum_proficiency VARCHAR(30) NOT NULL,
     importance_weight DECIMAL(3, 2) NOT NULL DEFAULT 1.00,
     is_core BOOLEAN NOT NULL DEFAULT TRUE,
-    CONSTRAINT fk_role_skills_skill FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+    CONSTRAINT uk_role_skill UNIQUE (role_name, skill_id),
+    CONSTRAINT fk_role_skills_skill FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE,
+    INDEX idx_role_skills_role (role_name)
 );
 
 -- 5. Base Opportunities Table (Polymorphic Root)
-CREATE TABLE opportunities (
+CREATE TABLE IF NOT EXISTS opportunities (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(200) NOT NULL,
+    title VARCHAR(200) NOT NULL UNIQUE,
     description TEXT NOT NULL,
-    opportunity_type VARCHAR(40) NOT NULL, -- COURSE, PROJECT, INTERNSHIP, CERTIFICATION
-    difficulty_level VARCHAR(30) NOT NULL, -- BEGINNER, INTERMEDIATE, ADVANCED, EXPERT
+    opportunity_type VARCHAR(40) NOT NULL,
+    difficulty_level VARCHAR(30) NOT NULL,
     estimated_hours DECIMAL(6, 1) NOT NULL,
     cost DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     provider VARCHAR(150) NOT NULL,
     url VARCHAR(500),
     rating DECIMAL(3, 2) DEFAULT 4.50,
     rating_count INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_opp_type (opportunity_type),
+    INDEX idx_opp_difficulty (difficulty_level),
+    INDEX idx_opp_cost (cost)
 );
 
 -- 6. Specialized Opportunity Extension Tables
-CREATE TABLE course_details (
+CREATE TABLE IF NOT EXISTS course_details (
     opportunity_id BIGINT PRIMARY KEY,
     platform VARCHAR(100) NOT NULL,
     syllabus_summary TEXT,
@@ -88,26 +80,26 @@ CREATE TABLE course_details (
     CONSTRAINT fk_course_opp FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE
 );
 
-CREATE TABLE project_details (
+CREATE TABLE IF NOT EXISTS project_details (
     opportunity_id BIGINT PRIMARY KEY,
     repository_template_url VARCHAR(500),
     tech_stack_csv VARCHAR(255) NOT NULL,
-    project_tier VARCHAR(40) NOT NULL, -- GUIDED, CAPSTONE, OPEN_SOURCE
+    project_tier VARCHAR(40) NOT NULL,
     deliverable_description TEXT,
     CONSTRAINT fk_project_opp FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE
 );
 
-CREATE TABLE internship_details (
+CREATE TABLE IF NOT EXISTS internship_details (
     opportunity_id BIGINT PRIMARY KEY,
     company_name VARCHAR(150) NOT NULL,
     monthly_stipend DECIMAL(10, 2) DEFAULT 0.00,
-    location_type VARCHAR(40) NOT NULL, -- REMOTE, HYBRID, ON_SITE
+    location_type VARCHAR(40) NOT NULL,
     duration_months INT NOT NULL,
     application_deadline VARCHAR(30),
     CONSTRAINT fk_internship_opp FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE
 );
 
-CREATE TABLE certification_details (
+CREATE TABLE IF NOT EXISTS certification_details (
     opportunity_id BIGINT PRIMARY KEY,
     issuing_organization VARCHAR(150) NOT NULL,
     exam_code VARCHAR(50),
@@ -117,10 +109,10 @@ CREATE TABLE certification_details (
 );
 
 -- 7. Opportunity Skills Mapping
-CREATE TABLE opportunity_skills (
+CREATE TABLE IF NOT EXISTS opportunity_skills (
     opportunity_id BIGINT NOT NULL,
     skill_id BIGINT NOT NULL,
-    relationship_type VARCHAR(30) NOT NULL, -- PREREQUISITE, GAINED
+    relationship_type VARCHAR(30) NOT NULL,
     target_proficiency VARCHAR(30) NOT NULL,
     PRIMARY KEY (opportunity_id, skill_id, relationship_type),
     CONSTRAINT fk_opp_skills_opp FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE,
@@ -128,7 +120,7 @@ CREATE TABLE opportunity_skills (
 );
 
 -- 8. Recommendations History
-CREATE TABLE recommendations (
+CREATE TABLE IF NOT EXISTS recommendations (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     student_id BIGINT NOT NULL,
     generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -136,7 +128,7 @@ CREATE TABLE recommendations (
     CONSTRAINT fk_rec_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 );
 
-CREATE TABLE recommendation_items (
+CREATE TABLE IF NOT EXISTS recommendation_items (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     recommendation_id BIGINT NOT NULL,
     opportunity_id BIGINT NOT NULL,
@@ -152,38 +144,31 @@ CREATE TABLE recommendation_items (
 );
 
 -- 9. User Feedback Table
-CREATE TABLE user_feedback (
+CREATE TABLE IF NOT EXISTS user_feedback (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     student_id BIGINT NOT NULL,
     opportunity_id BIGINT NOT NULL,
-    action_type VARCHAR(40) NOT NULL, -- SAVED, DISMISSED, RATED, COMPLETED
-    rating_value INT, -- 1 to 5
+    action_type VARCHAR(40) NOT NULL,
+    rating_value INT,
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_feedback_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    CONSTRAINT fk_feedback_opp FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE
+    CONSTRAINT fk_feedback_opp FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE,
+    INDEX idx_feedback_student_opp (student_id, opportunity_id)
 );
 
 -- 10. Learning Plan & Roadmap Items
-CREATE TABLE learning_plans (
+CREATE TABLE IF NOT EXISTS learning_plans (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     student_id BIGINT NOT NULL,
     opportunity_id BIGINT NOT NULL,
     sequence_order INT NOT NULL,
-    status VARCHAR(30) NOT NULL DEFAULT 'PENDING', -- PENDING, IN_PROGRESS, COMPLETED, SKIPPED
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
     target_completion_weeks INT NOT NULL,
     prerequisite_note VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_plan_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    CONSTRAINT fk_plan_opp FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE
+    CONSTRAINT fk_plan_opp FOREIGN KEY (opportunity_id) REFERENCES opportunities(id) ON DELETE CASCADE,
+    INDEX idx_plans_student (student_id, status)
 );
-
--- Indexes for efficient queries
-CREATE INDEX idx_student_email ON students(email);
-CREATE INDEX idx_opp_type ON opportunities(opportunity_type);
-CREATE INDEX idx_opp_difficulty ON opportunities(difficulty_level);
-CREATE INDEX idx_opp_cost ON opportunities(cost);
-CREATE INDEX idx_role_skills_role ON target_role_skills(role_name);
-CREATE INDEX idx_feedback_student_opp ON user_feedback(student_id, opportunity_id);
-CREATE INDEX idx_plans_student ON learning_plans(student_id, status);

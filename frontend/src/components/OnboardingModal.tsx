@@ -14,10 +14,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   onClose,
   onStudentCreated,
 }) => {
-  if (!isOpen) return null;
-
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [targetRole, setTargetRole] = useState('Java Backend Developer');
   const [weeklyHours, setWeeklyHours] = useState(15);
   const [maxBudget, setMaxBudget] = useState(100);
@@ -40,6 +39,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
     catalogApi.getSkills().then(setAvailableSkills).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      setPassword('');
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
 
   const toggleSkill = (skill: Skill) => {
     const exists = selectedSkills.find((s) => s.skillId === skill.id);
@@ -75,6 +83,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       const student = await studentApi.register({
         fullName,
         email,
+        password,
         targetRole,
         weeklyHoursAvailable: weeklyHours,
         maxBudget,
@@ -83,6 +92,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         skills: selectedSkills,
       });
 
+      setFullName('');
+      setEmail('');
+      setPassword('');
+      setBio('');
+      setSelectedSkills([]);
       onStudentCreated(student);
       onClose();
     } catch (err: any) {
@@ -143,6 +157,19 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 className="w-full bg-navy-950 border border-navy-700 rounded-xl px-3.5 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-violet"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">Account Password (min. 8 characters)</label>
+            <input
+              type="password"
+              placeholder="Choose a strong password for session sign-in"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={8}
+              required
+              className="w-full bg-navy-950 border border-navy-700 rounded-xl px-3.5 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-violet"
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

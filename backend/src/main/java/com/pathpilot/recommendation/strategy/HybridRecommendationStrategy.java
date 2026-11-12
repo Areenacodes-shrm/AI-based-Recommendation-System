@@ -6,6 +6,7 @@ import com.pathpilot.model.*;
 import com.pathpilot.model.opportunity.Opportunity;
 import com.pathpilot.recommendation.ExplainabilityService;
 import com.pathpilot.recommendation.RecommendationContext;
+import com.pathpilot.recommendation.rerank.RecommendationReranker;
 import com.pathpilot.recommendation.scoring.ContentBasedScorer;
 import com.pathpilot.recommendation.scoring.ContextualScorer;
 import com.pathpilot.recommendation.scoring.FeedbackScorer;
@@ -23,7 +24,7 @@ import java.util.function.Supplier;
 /**
  * High-performance Explainable Hybrid Recommendation Strategy.
  * Combines Content-based, Skill-gap match, Contextual constraints, and Bayesian feedback
- * scoring with concurrent execution and thread-safe real-time telemetry adjustment.
+ * scoring with concurrent execution, optional diversity reranking, and thread-safe telemetry.
  */
 @Component
 @Primary
@@ -38,6 +39,7 @@ public class HybridRecommendationStrategy implements RecommendationStrategy {
     private final RecommendationTaskExecutor taskExecutor;
     private final FeedbackTelemetryAggregator telemetryAggregator;
     private final ExplainabilityService explainabilityService;
+    private final RecommendationReranker diversityReranker;
 
     // Polymorphic scoring strategies
     private final ContentBasedScorer contentScorer;
@@ -53,6 +55,7 @@ public class HybridRecommendationStrategy implements RecommendationStrategy {
             RecommendationTaskExecutor taskExecutor,
             FeedbackTelemetryAggregator telemetryAggregator,
             ExplainabilityService explainabilityService,
+            RecommendationReranker diversityReranker,
             ContentBasedScorer contentScorer,
             SkillMatchScorer skillMatchScorer,
             ContextualScorer contextualScorer,
@@ -64,6 +67,7 @@ public class HybridRecommendationStrategy implements RecommendationStrategy {
         this.taskExecutor = taskExecutor;
         this.telemetryAggregator = telemetryAggregator;
         this.explainabilityService = explainabilityService;
+        this.diversityReranker = diversityReranker;
         this.contentScorer = contentScorer;
         this.skillMatchScorer = skillMatchScorer;
         this.contextualScorer = contextualScorer;
@@ -72,101 +76,156 @@ public class HybridRecommendationStrategy implements RecommendationStrategy {
 
     @Override
     public RecommendationResult recommend(StudentProfile student, int limit) {
-        log.info("Generating hybrid recommendations for student: {} ({})", student.getFullName(), student.getEmail());
+        return recommend(student, limit, true);
+    }
 
-        // Step 1: Candidate Retrieval
+    public RecommendationResult recommend(StudentProfile student, int limit, boolean applyDiversity) {
+        log.info("Generating hybrid recommendations for student id={} (diverse={})", student.getId(), applyDiversity);
+
+        List<UserFeedback> studentFeedbacks = student.getId() != null
+                ? feedbackRepository.findByStudentId(student.getId())
+                : List.of();
+
+        RecommendationResult result = executeScoringPipeline(student, studentFeedbacks, limit, applyDiversity);
+
+        if (student.getId() != null) {
+            try {
+                Long recId = recommendationRepository.saveRecommendation(student.getId(), getStrategyName(), result.getItems());
+                result.setRecommendationId(recId);
+            } catch (Exception e) {
+                log.error("Failed to persist recommendation run for student id={}", student.getId(), e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Evaluates a hypothetical profile in-memory without writing recommendations or profile changes to the database.
+     */
+    public RecommendationResult simulate(StudentProfile simulatedStudent, List<UserFeedback> existingFeedback,
+                                         int limit, boolean applyDiversity) {
+        return executeScoringPipeline(simulatedStudent, existingFeedback, limit, applyDiversity);
+    }
+
+    /**
+     * Scores an explicit subset of opportunities for side-by-side comparison without persisting a recommendation batch.
+     */
+    public List<RecommendationItem> scoreSpecificOpportunities(StudentProfile student, List<Opportunity> opportunities) {
+        if (opportunities == null || opportunities.isEmpty()) {
+            return List.of();
+        }
+        List<UserFeedback> feedbacks = student.getId() != null
+                ? feedbackRepository.findByStudentId(student.getId())
+                : List.of();
+        RecommendationContext context = buildContext(student, feedbacks, new HashSet<>());
+
+        List<Supplier<RecommendationItem>> tasks = opportunities.stream()
+                .map(opp -> (Supplier<RecommendationItem>) () -> scoreCandidate(student, opp, context))
+                .toList();
+
+        List<RecommendationItem> scored = new ArrayList<>(taskExecutor.executeParallelTasks(tasks));
+        scored.sort(RecommendationItem.BY_RANKING_SCORE_DESC);
+        for (int i = 0; i < scored.size(); i++) {
+            scored.get(i).setRankOrder(i + 1);
+        }
+        return scored;
+    }
+
+    private RecommendationResult executeScoringPipeline(StudentProfile student, List<UserFeedback> studentFeedbacks,
+                                                        int limit, boolean applyDiversity) {
+        int clampedLimit = Math.max(1, Math.min(25, limit));
+
         Set<String> studentSkillNames = new HashSet<>(student.getSkillsMap().keySet());
         List<Opportunity> candidateOpportunities = opportunityRepository.findCandidatesByRoleAndInterests(
-                student.getTargetRole(), studentSkillNames, Math.max(25, limit * 2)
+                student.getTargetRole(), studentSkillNames, Math.max(25, clampedLimit * 2)
         );
 
-        // Step 2: Context Preparation & Role Benchmark Loading
-        RecommendationContext context = new RecommendationContext(student.getTargetRole());
-        List<TargetRoleSkill> roleSkills = skillRepository.findRoleSkills(student.getTargetRole());
-        context.setRoleSkills(roleSkills);
-        context.setStudentSkills(student.getSkillsList());
-
-        // Step 3: Feedback History Loading
-        List<UserFeedback> studentFeedbacks = feedbackRepository.findByStudentId(student.getId());
         Set<Long> dismissedOpportunityIds = new HashSet<>();
-        for (UserFeedback fb : studentFeedbacks) {
-            if (fb.getActionType() == FeedbackAction.DISMISSED) {
-                dismissedOpportunityIds.add(fb.getOpportunityId());
-            } else if (fb.getActionType() == FeedbackAction.RATED && fb.getRatingValue() != null) {
-                context.setOpportunityFeedbackRating(fb.getOpportunityId(), fb.getRatingValue());
-            }
-            context.addInteractedOpportunity(fb.getOpportunityId());
-        }
+        RecommendationContext context = buildContext(student, studentFeedbacks, dismissedOpportunityIds);
 
-        // Cold-Start Strategy: If the user has 0 skills recorded, adapt weights to balance exploration
-        boolean isColdStart = student.getSkillsMap().isEmpty();
-        if (isColdStart) {
-            context.setContentWeight(0.35);
-            context.setSkillWeight(0.20);
-            context.setCareerWeight(0.25);
-            context.setContextualWeight(0.10);
-            context.setFeedbackWeight(0.10);
-        }
-
-        // Step 4: Eligibility Filtering (Filter dismissed and drastically over-budget items)
         List<Opportunity> eligibleCandidates = candidateOpportunities.stream()
                 .filter(opp -> !dismissedOpportunityIds.contains(opp.getId()))
                 .filter(opp -> {
-                    // Strict budget filter: allow up to 1.5x user budget if score is high, otherwise discard
                     BigDecimal maxAllowed = student.getMaxBudget().multiply(BigDecimal.valueOf(1.5));
                     return opp.getCost().compareTo(maxAllowed) <= 0;
                 })
                 .toList();
 
-        // Step 5: Concurrency - Parallel Scoring Tasks
         List<Supplier<RecommendationItem>> scoringTasks = eligibleCandidates.stream()
                 .map(opp -> (Supplier<RecommendationItem>) () -> scoreCandidate(student, opp, context))
                 .toList();
 
         List<RecommendationItem> scoredItems = new ArrayList<>(taskExecutor.executeParallelTasks(scoringTasks));
-
-        // Step 6: Custom Sorting using Java Comparator
         scoredItems.sort(RecommendationItem.BY_RANKING_SCORE_DESC);
 
-        // Take top-K results
-        List<RecommendationItem> topResults = scoredItems.stream()
-                .limit(Math.max(1, limit))
-                .toList();
-
-        // Assign ordinal rank orders
-        for (int i = 0; i < topResults.size(); i++) {
-            topResults.get(i).setRankOrder(i + 1);
+        List<RecommendationItem> finalItems;
+        boolean rerankedApplied = false;
+        if (applyDiversity && diversityReranker != null && scoredItems.size() > 1) {
+            finalItems = diversityReranker.rerank(scoredItems, clampedLimit);
+            rerankedApplied = true;
+        } else {
+            finalItems = scoredItems.stream().limit(clampedLimit).toList();
+            for (int i = 0; i < finalItems.size(); i++) {
+                finalItems.get(i).setRankOrder(i + 1);
+            }
         }
 
-        // Step 7: Persistence
-        Long recId = null;
-        try {
-            recId = recommendationRepository.saveRecommendation(student.getId(), getStrategyName(), topResults);
-        } catch (Exception e) {
-            log.error("Failed to persist recommendation run to database", e);
+        RecommendationResult result = new RecommendationResult(null, student.getId(), getStrategyName(), finalItems);
+        boolean isColdStart = student.getSkillsMap().isEmpty();
+        result.setColdStart(isColdStart);
+        result.setDiversityReranked(rerankedApplied);
+        if (isColdStart) {
+            result.setRelevanceBasis(RelevanceBasis.LIMITED_DATA_COLD_START);
+        } else if (!context.getStudentInteractedOpportunityIds().isEmpty()) {
+            result.setRelevanceBasis(RelevanceBasis.FEEDBACK_SUPPORTED);
+        } else {
+            result.setRelevanceBasis(RelevanceBasis.PROFILE_BASED);
+        }
+        return result;
+    }
+
+    private RecommendationContext buildContext(StudentProfile student, List<UserFeedback> studentFeedbacks,
+                                               Set<Long> dismissedOut) {
+        RecommendationContext context = new RecommendationContext(student.getTargetRole());
+        List<TargetRoleSkill> roleSkills = skillRepository.findRoleSkills(student.getTargetRole());
+        context.setRoleSkills(roleSkills);
+        context.setStudentSkills(student.getSkillsList());
+
+        if (studentFeedbacks != null) {
+            for (UserFeedback fb : studentFeedbacks) {
+                if (fb.getActionType() == FeedbackAction.DISMISSED) {
+                    dismissedOut.add(fb.getOpportunityId());
+                } else if (fb.getActionType() == FeedbackAction.RATED && fb.getRatingValue() != null) {
+                    context.setOpportunityFeedbackRating(fb.getOpportunityId(), fb.getRatingValue());
+                }
+                context.addInteractedOpportunity(fb.getOpportunityId());
+            }
         }
 
-        return new RecommendationResult(recId, student.getId(), getStrategyName(), topResults);
+        // Shift weight toward semantic content and context when no skills are recorded yet (weights sum to 1.00)
+        if (student.getSkillsMap().isEmpty()) {
+            context.setContentWeight(0.40);
+            context.setSkillWeight(0.30);
+            context.setContextualWeight(0.18);
+            context.setFeedbackWeight(0.12);
+        }
+        return context;
     }
 
     private RecommendationItem scoreCandidate(StudentProfile student, Opportunity opp, RecommendationContext context) {
-        // Compute individual polymorphic scores
         double contentScore = contentScorer.score(student, opp, context);
         double skillScore = skillMatchScorer.score(student, opp, context);
         double contextualScore = contextualScorer.score(student, opp, context);
         double feedbackScore = feedbackScorer.score(student, opp, context);
 
-        // Base weighted hybrid ranking formula
         double rawRank = (context.getContentWeight() * contentScore)
                        + (context.getSkillWeight() * skillScore)
                        + (context.getContextualWeight() * contextualScore)
                        + (context.getFeedbackWeight() * feedbackScore);
 
-        // Apply thread-safe real-time telemetry multiplier
         double telemetryMultiplier = telemetryAggregator.getFeedbackAdjustmentMultiplier(opp.getId());
         double finalScore = Math.max(0.0, Math.min(1.0, rawRank * telemetryMultiplier));
 
-        // Generate explainability breakdown
         ExplanationData explanation = explainabilityService.generateExplanation(student, opp, context);
 
         return new RecommendationItem(opp, finalScore, contentScore, skillScore, contextualScore, feedbackScore, explanation);

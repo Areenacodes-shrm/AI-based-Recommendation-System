@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StudentProfile, LearningPlanItem, PlanStatus } from '../types';
+import { StudentProfile, LearningPlanItem, PlanStatus, WeeklyProgressSummary } from '../types';
 import { roadmapApi } from '../api/client';
 import {
   Map,
@@ -7,14 +7,16 @@ import {
   Clock,
   Calendar,
   Sparkles,
-  ArrowRight,
   ExternalLink,
   RefreshCw,
   Trash2,
   Award,
   BookOpen,
   Code2,
-  Briefcase
+  Briefcase,
+  Download,
+  Printer,
+  TrendingUp,
 } from 'lucide-react';
 
 interface RoadmapPageProps {
@@ -23,20 +25,36 @@ interface RoadmapPageProps {
 
 export const RoadmapPage: React.FC<RoadmapPageProps> = ({ student }) => {
   const [items, setItems] = useState<LearningPlanItem[]>([]);
+  const [summary, setSummary] = useState<WeeklyProgressSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const fetchRoadmap = async () => {
     if (!student) return;
     try {
       setLoading(true);
-      const data = await roadmapApi.getRoadmap(student.id);
+      const [data, summaryData] = await Promise.all([
+        roadmapApi.getRoadmap(student.id),
+        roadmapApi.getSummary(student.id),
+      ]);
       setItems(data);
+      setSummary(summaryData);
     } catch (err: any) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshSummaryOnly = async () => {
+    if (!student) return;
+    try {
+      const summaryData = await roadmapApi.getSummary(student.id);
+      setSummary(summaryData);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -53,9 +71,10 @@ export const RoadmapPage: React.FC<RoadmapPageProps> = ({ student }) => {
     try {
       const updated = await roadmapApi.updateItem(itemId, newStatus);
       setItems((prev) => prev.map((it) => (it.id === itemId ? updated : it)));
+      await refreshSummaryOnly();
       showToast(`Milestone updated to ${newStatus.replace('_', ' ')}!`);
     } catch (err: any) {
-      showToast('Error updating milestone status');
+      showToast(err.message || 'Error updating milestone status');
     }
   };
 
@@ -63,9 +82,10 @@ export const RoadmapPage: React.FC<RoadmapPageProps> = ({ student }) => {
     try {
       await roadmapApi.deleteItem(itemId);
       setItems((prev) => prev.filter((it) => it.id !== itemId));
+      await refreshSummaryOnly();
       showToast('Milestone removed from roadmap');
     } catch (err: any) {
-      showToast('Error deleting milestone');
+      showToast(err.message || 'Error deleting milestone');
     }
   };
 
@@ -75,17 +95,38 @@ export const RoadmapPage: React.FC<RoadmapPageProps> = ({ student }) => {
       setRegenerating(true);
       const data = await roadmapApi.generateRoadmap(student.id);
       setItems(data);
+      await refreshSummaryOnly();
       showToast('Roadmap regenerated based on latest skill gaps!');
     } catch (err: any) {
-      showToast('Failed to regenerate roadmap');
+      showToast(err.message || 'Failed to regenerate roadmap');
     } finally {
       setRegenerating(false);
     }
   };
 
-  const completedCount = items.filter((it) => it.status === 'COMPLETED').length;
-  const progressPercent = items.length > 0 ? Math.round((completedCount / items.length) * 100) : 0;
-  const totalWeeks = items.reduce((acc, it) => acc + (it.status !== 'SKIPPED' ? it.targetCompletionWeeks : 0), 0);
+  const handleExportCsv = async () => {
+    if (!student) return;
+    try {
+      setExporting(true);
+      await roadmapApi.exportCsv(student.id);
+      showToast('Exported personalized learning roadmap CSV!');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to export roadmap CSV');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const completedCount = summary ? summary.completedItems : items.filter((it) => it.status === 'COMPLETED').length;
+  const totalCount = summary ? summary.totalItems : items.length;
+  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const remainingWeeks = summary
+    ? summary.remainingWeeks
+    : items.reduce((acc, it) => acc + (it.status !== 'SKIPPED' && it.status !== 'COMPLETED' ? it.targetCompletionWeeks : 0), 0);
 
   const getTypeIcon = (type?: string) => {
     switch (type) {
@@ -135,44 +176,96 @@ export const RoadmapPage: React.FC<RoadmapPageProps> = ({ student }) => {
             </p>
           </div>
 
-          <button
-            onClick={handleRegenerate}
-            disabled={regenerating}
-            className="px-4 py-2.5 bg-brand-violet hover:bg-brand-violetLight text-white rounded-xl text-xs font-bold flex items-center space-x-2 transition-all shadow-md shadow-brand-violet/25 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
-            <span>Regenerate Trajectory</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 no-print">
+            <button
+              onClick={handleExportCsv}
+              disabled={exporting || items.length === 0}
+              className="px-3.5 py-2.5 bg-navy-950 hover:bg-navy-800 border border-navy-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all disabled:opacity-40"
+            >
+              <Download className="w-3.5 h-3.5 text-brand-teal" />
+              <span>{exporting ? 'Exporting...' : 'Export CSV'}</span>
+            </button>
+
+            <button
+              onClick={handlePrint}
+              disabled={items.length === 0}
+              className="px-3.5 py-2.5 bg-navy-950 hover:bg-navy-800 border border-navy-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all disabled:opacity-40"
+            >
+              <Printer className="w-3.5 h-3.5 text-brand-violetLight" />
+              <span>Print / PDF</span>
+            </button>
+
+            <button
+              onClick={handleRegenerate}
+              disabled={regenerating}
+              className="px-4 py-2.5 bg-brand-violet hover:bg-brand-violetLight text-white rounded-xl text-xs font-bold flex items-center space-x-2 transition-all shadow-md shadow-brand-violet/25 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
+              <span>Regenerate Trajectory</span>
+            </button>
+          </div>
         </div>
 
-        {/* Progress Bar & Roadmap Stats */}
-        <div className="mt-6 pt-5 border-t border-navy-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
+        {/* Progress Bar & Weekly Progress Summary */}
+        <div className="mt-6 pt-5 border-t border-navy-800/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-navy-950/70 border border-navy-800 rounded-xl px-4 py-3">
             <div className="flex items-center justify-between text-xs mb-1.5">
               <span className="text-slate-400 font-medium">Trajectory Completion</span>
               <span className="text-white font-bold">{progressPercent}%</span>
             </div>
-            <div className="w-full bg-navy-950 h-2.5 rounded-full overflow-hidden border border-navy-800">
+            <div className="w-full bg-navy-900 h-2.5 rounded-full overflow-hidden border border-navy-800">
               <div
                 className="bg-gradient-to-r from-brand-violet to-brand-teal h-full rounded-full transition-all duration-500"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-          </div>
-
-          <div className="bg-navy-950/70 border border-navy-800 rounded-xl px-4 py-2 text-xs flex items-center space-x-3">
-            <Clock className="w-4 h-4 text-brand-teal" />
-            <div>
-              <div className="text-[10px] text-slate-400">Estimated Total Duration</div>
-              <div className="font-bold text-white">~{totalWeeks} Weeks ({student?.weeklyHoursAvailable} hrs/wk)</div>
+            <div className="text-[10px] text-slate-400 mt-1.5">
+              {completedCount} of {totalCount} milestones completed
             </div>
           </div>
 
-          <div className="bg-navy-950/70 border border-navy-800 rounded-xl px-4 py-2 text-xs flex items-center space-x-3">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <div className="bg-navy-950/70 border border-navy-800 rounded-xl px-4 py-3 text-xs flex items-center space-x-3">
+            <Clock className="w-4 h-4 text-brand-teal flex-shrink-0" />
             <div>
-              <div className="text-[10px] text-slate-400">Milestones Concluded</div>
-              <div className="font-bold text-white">{completedCount} of {items.length} Finished</div>
+              <div className="text-[10px] text-slate-400">Study Hours Pacing</div>
+              <div className="font-bold text-white">
+                {summary ? `${summary.completedHours} done / ${summary.remainingHours} hrs left` : `~${remainingWeeks} weeks`}
+              </div>
+              <div className="text-[10px] text-slate-400">
+                ~{remainingWeeks} wks at {student?.weeklyHoursAvailable} hrs/wk
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-navy-950/70 border border-navy-800 rounded-xl px-4 py-3 text-xs flex items-center space-x-3">
+            <TrendingUp className="w-4 h-4 text-brand-violetLight flex-shrink-0" />
+            <div>
+              <div className="text-[10px] text-slate-400">Projected Role Readiness</div>
+              <div className="font-bold text-white">
+                {summary
+                  ? `${summary.currentRoleMatchPercentage.toFixed(0)}% → ${summary.projectedRoleMatchPercentage.toFixed(0)}%`
+                  : 'Calculating...'}
+              </div>
+              <div className="text-[10px] text-emerald-400 font-semibold">
+                {summary && summary.estimatedSkillCoverageGain > 0
+                  ? `+${summary.estimatedSkillCoverageGain.toFixed(1)}% projected gain`
+                  : 'Complete active steps to raise score'}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-navy-950/70 border border-navy-800 rounded-xl px-4 py-3 text-xs flex items-center space-x-3">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <div>
+              <div className="text-[10px] text-slate-400">Active & Queue Status</div>
+              <div className="font-bold text-white">
+                {summary
+                  ? `${summary.inProgressItems} Active • ${summary.pendingItems} Pending`
+                  : `${items.length} Total Steps`}
+              </div>
+              <div className="text-[10px] text-slate-400">
+                {summary ? `${summary.skippedItems} skipped` : 'Interactive status tracking'}
+              </div>
             </div>
           </div>
         </div>
@@ -265,7 +358,7 @@ export const RoadmapPage: React.FC<RoadmapPageProps> = ({ student }) => {
                   </div>
 
                   {/* Status Toggle Controls */}
-                  <div className="flex items-center space-x-1.5">
+                  <div className="flex items-center space-x-1.5 no-print">
                     <button
                       onClick={() => handleStatusChange(item.id, 'IN_PROGRESS')}
                       title="Mark In Progress"

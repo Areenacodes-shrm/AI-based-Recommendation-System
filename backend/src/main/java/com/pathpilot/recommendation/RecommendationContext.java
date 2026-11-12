@@ -1,6 +1,5 @@
 package com.pathpilot.recommendation;
 
-import com.pathpilot.model.Skill;
 import com.pathpilot.model.StudentSkill;
 import com.pathpilot.model.TargetRoleSkill;
 
@@ -17,12 +16,11 @@ public class RecommendationContext {
     private final Map<Long, Double> opportunityFeedbackRatings = new HashMap<>();
     private final Set<Long> studentInteractedOpportunityIds = new HashSet<>();
 
-    // Scoring Weights (sum = 1.0)
-    private double contentWeight = 0.20;
-    private double skillWeight = 0.35;
-    private double careerWeight = 0.25;
-    private double contextualWeight = 0.10;
-    private double feedbackWeight = 0.10;
+    // Normalized hybrid scoring weights (sum = 1.00)
+    private double contentWeight = 0.25;
+    private double skillWeight = 0.45;
+    private double contextualWeight = 0.18;
+    private double feedbackWeight = 0.12;
 
     public RecommendationContext(String targetRole) {
         this.targetRole = targetRole;
@@ -92,14 +90,6 @@ public class RecommendationContext {
 
     public void setSkillWeight(double skillWeight) {
         this.skillWeight = skillWeight;
-    }
-
-    public double getCareerWeight() {
-        return careerWeight;
-    }
-
-    public void setCareerWeight(double careerWeight) {
-        this.careerWeight = careerWeight;
     }
 
     public double getContextualWeight() {

@@ -5,7 +5,8 @@ import java.util.List;
 
 /**
  * Transparent explanation breakdown accompanying each recommended opportunity.
- * Fully details why the opportunity was selected, skill overlaps, missing skills, and scheduling fit.
+ * Fully details why the opportunity was selected, skill overlaps, missing skills,
+ * scheduling fit, and data-basis confidence indicators.
  */
 public class ExplanationData {
     private List<String> matchedSkills = new ArrayList<>();
@@ -14,6 +15,9 @@ public class ExplanationData {
     private String timeAndBudgetFitReason;
     private String prerequisitesReason;
     private String difficultyAssessment;
+    private RelevanceBasis relevanceBasis = RelevanceBasis.PROFILE_BASED;
+    private String confidenceLabel;
+    private String confidenceNote;
 
     public ExplanationData() {}
 
@@ -63,5 +67,29 @@ public class ExplanationData {
 
     public void setDifficultyAssessment(String difficultyAssessment) {
         this.difficultyAssessment = difficultyAssessment;
+    }
+
+    public RelevanceBasis getRelevanceBasis() {
+        return relevanceBasis;
+    }
+
+    public void setRelevanceBasis(RelevanceBasis relevanceBasis) {
+        this.relevanceBasis = relevanceBasis;
+    }
+
+    public String getConfidenceLabel() {
+        return confidenceLabel;
+    }
+
+    public void setConfidenceLabel(String confidenceLabel) {
+        this.confidenceLabel = confidenceLabel;
+    }
+
+    public String getConfidenceNote() {
+        return confidenceNote;
+    }
+
+    public void setConfidenceNote(String confidenceNote) {
+        this.confidenceNote = confidenceNote;
     }
 }

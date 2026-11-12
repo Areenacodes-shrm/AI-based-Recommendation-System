@@ -1,11 +1,24 @@
 package com.pathpilot.dto;
 
 import com.pathpilot.model.FeedbackAction;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 public class FeedbackRequestDto {
+
+    @NotNull(message = "Opportunity ID is required")
     private Long opportunityId;
+
+    @NotNull(message = "Feedback action type is required")
     private FeedbackAction actionType;
+
+    @Min(value = 1, message = "Rating value must be between 1 and 5")
+    @Max(value = 5, message = "Rating value must be between 1 and 5")
     private Integer ratingValue;
+
+    @Size(max = 1000, message = "Notes cannot exceed 1000 characters")
     private String notes;
 
     public FeedbackRequestDto() {}

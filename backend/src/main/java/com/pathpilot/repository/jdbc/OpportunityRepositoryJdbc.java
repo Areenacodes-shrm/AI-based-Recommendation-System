@@ -4,6 +4,7 @@ import com.pathpilot.exception.DatabaseOperationException;
 import com.pathpilot.model.*;
 import com.pathpilot.model.opportunity.*;
 import com.pathpilot.repository.OpportunityRepository;
+import com.pathpilot.util.JdbcUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,7 +15,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.*;
+import java.sql.PreparedStatement;
+import java.sql.Timestamp;
 import java.util.*;
 
 /**
@@ -122,6 +124,34 @@ public class OpportunityRepositoryJdbc implements OpportunityRepository {
     }
 
     @Override
+    public List<Opportunity> findByIds(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<Long> validIds = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (validIds.isEmpty()) {
+            return List.of();
+        }
+
+        StringBuilder sql = new StringBuilder(BASE_SELECT_SQL).append("WHERE o.id IN (");
+        for (int i = 0; i < validIds.size(); i++) {
+            if (i > 0) sql.append(", ");
+            sql.append("?");
+        }
+        sql.append(")");
+
+        try {
+            List<Opportunity> opps = jdbcTemplate.query(sql.toString(), opportunityRowMapper, validIds.toArray());
+            for (Opportunity opp : opps) {
+                populateOpportunitySkills(opp);
+            }
+            return opps;
+        } catch (DataAccessException e) {
+            throw new DatabaseOperationException("Error fetching opportunities by IDs", e);
+        }
+    }
+
+    @Override
     public List<Opportunity> findAll() {
         String sql = BASE_SELECT_SQL + "ORDER BY o.rating DESC, o.id ASC";
         try {
@@ -208,8 +238,12 @@ public class OpportunityRepositoryJdbc implements OpportunityRepository {
         params.add(Math.max(10, limit));
 
         try {
-            List<Opportunity> candidates = jdbcTemplate.query(sql.toString(), opportunityRowMapper, params.toArray());
-            // If candidates are few (e.g. cold start), backfill with general catalog items
+            List<Opportunity> candidates = new ArrayList<>(
+                    jdbcTemplate.query(sql.toString(), opportunityRowMapper, params.toArray()));
+            for (Opportunity opp : candidates) {
+                populateOpportunitySkills(opp);
+            }
+            // Backfill with top-rated catalog items during cold-start or niche roles
             if (candidates.size() < 6) {
                 List<Opportunity> topRated = findAll();
                 Set<Long> existingIds = new HashSet<>();
@@ -219,10 +253,6 @@ public class OpportunityRepositoryJdbc implements OpportunityRepository {
                         candidates.add(o);
                     }
                     if (candidates.size() >= limit) break;
-                }
-            } else {
-                for (Opportunity opp : candidates) {
-                    populateOpportunitySkills(opp);
                 }
             }
             return candidates;
@@ -240,7 +270,7 @@ public class OpportunityRepositoryJdbc implements OpportunityRepository {
         try {
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update(con -> {
-                PreparedStatement ps = con.prepareStatement(baseSql, Statement.RETURN_GENERATED_KEYS);
+                PreparedStatement ps = con.prepareStatement(baseSql, new String[]{"id"});
                 ps.setString(1, opp.getTitle());
                 ps.setString(2, opp.getDescription());
                 ps.setString(3, opp.getOpportunityType().name());
@@ -254,7 +284,7 @@ public class OpportunityRepositoryJdbc implements OpportunityRepository {
                 return ps;
             }, keyHolder);
 
-            Long idKey = com.pathpilot.util.JdbcUtils.extractGeneratedId(keyHolder);
+            Long idKey = JdbcUtils.extractGeneratedId(keyHolder);
             if (idKey != null) {
                 opp.setId(idKey);
             }

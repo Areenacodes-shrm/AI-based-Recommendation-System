@@ -1,9 +1,14 @@
 package com.pathpilot.dto;
 
 import com.pathpilot.model.PlanStatus;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 
 public class LearningPlanUpdateDto {
     private PlanStatus status;
+
+    @Min(value = 1, message = "Target completion weeks must be at least 1")
+    @Max(value = 52, message = "Target completion weeks cannot exceed 52")
     private Integer targetCompletionWeeks;
 
     public LearningPlanUpdateDto() {}

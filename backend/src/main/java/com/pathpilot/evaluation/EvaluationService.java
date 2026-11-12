@@ -3,7 +3,6 @@ package com.pathpilot.evaluation;
 import com.pathpilot.dto.EvaluationResultDto;
 import com.pathpilot.model.RecommendationItem;
 import com.pathpilot.model.RecommendationResult;
-import com.pathpilot.model.Skill;
 import com.pathpilot.model.StudentProfile;
 import com.pathpilot.model.TargetRoleSkill;
 import com.pathpilot.model.opportunity.Opportunity;

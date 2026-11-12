@@ -2,7 +2,6 @@ package com.pathpilot.model;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -12,6 +11,9 @@ public class RecommendationResult {
     private Long recommendationId;
     private Long studentId;
     private String strategyUsed;
+    private RelevanceBasis relevanceBasis = RelevanceBasis.PROFILE_BASED;
+    private boolean coldStart;
+    private boolean diversityReranked;
     private LocalDateTime generatedAt;
     private List<RecommendationItem> items = new ArrayList<>();
 
@@ -49,6 +51,30 @@ public class RecommendationResult {
 
     public void setStrategyUsed(String strategyUsed) {
         this.strategyUsed = strategyUsed;
+    }
+
+    public RelevanceBasis getRelevanceBasis() {
+        return relevanceBasis;
+    }
+
+    public void setRelevanceBasis(RelevanceBasis relevanceBasis) {
+        this.relevanceBasis = relevanceBasis;
+    }
+
+    public boolean isColdStart() {
+        return coldStart;
+    }
+
+    public void setColdStart(boolean coldStart) {
+        this.coldStart = coldStart;
+    }
+
+    public boolean isDiversityReranked() {
+        return diversityReranked;
+    }
+
+    public void setDiversityReranked(boolean diversityReranked) {
+        this.diversityReranked = diversityReranked;
     }
 
     public LocalDateTime getGeneratedAt() {

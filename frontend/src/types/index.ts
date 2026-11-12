@@ -3,6 +3,7 @@ export type DifficultyLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT
 export type ProficiencyLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT';
 export type PlanStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
 export type FeedbackAction = 'SAVED' | 'DISMISSED' | 'RATED' | 'COMPLETED';
+export type RelevanceBasis = 'LIMITED_DATA_COLD_START' | 'PROFILE_BASED' | 'FEEDBACK_SUPPORTED';
 
 export interface Skill {
   id: number;
@@ -24,6 +25,7 @@ export interface StudentProfile {
   id: number;
   fullName: string;
   email: string;
+  demoAccount?: boolean;
   targetRole: string;
   weeklyHoursAvailable: number;
   maxBudget: number;
@@ -33,6 +35,17 @@ export interface StudentProfile {
   skillsList?: StudentSkill[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface DemoProfile {
+  id: number;
+  fullName: string;
+  targetRole: string;
+}
+
+export interface AuthSession {
+  authenticated: boolean;
+  student: StudentProfile | null;
 }
 
 export interface Opportunity {
@@ -78,6 +91,9 @@ export interface ExplanationData {
   timeAndBudgetFitReason?: string;
   prerequisitesReason?: string;
   difficultyAssessment?: string;
+  relevanceBasis?: RelevanceBasis;
+  confidenceLabel?: string;
+  confidenceNote?: string;
 }
 
 export interface RecommendationItem {
@@ -95,8 +111,104 @@ export interface RecommendationResult {
   recommendationId?: number;
   studentId: number;
   strategyUsed: string;
+  relevanceBasis?: RelevanceBasis;
+  coldStart?: boolean;
+  diversityReranked?: boolean;
   generatedAt: string;
   items: RecommendationItem[];
+}
+
+export interface WhatIfSkillInput {
+  skillId?: number;
+  skillName?: string;
+  proficiencyLevel: ProficiencyLevel;
+  yearsExperience: number;
+}
+
+export interface WhatIfSimulationRequest {
+  targetRole?: string;
+  weeklyHoursAvailable?: number;
+  maxBudget?: number;
+  preferredDifficulty?: DifficultyLevel;
+  bio?: string;
+  simulatedSkills?: WhatIfSkillInput[];
+  limit?: number;
+  applyDiversity?: boolean;
+}
+
+export interface SimulationItemDelta {
+  item: RecommendationItem;
+  baselineRank?: number | null;
+  simulatedRank: number;
+  rankDelta?: number | null;
+  baselineScore: number;
+  scoreDelta: number;
+  changeStatus: 'NEW_ENTRY' | 'MOVED_UP' | 'MOVED_DOWN' | 'UNCHANGED';
+}
+
+export interface WhatIfSimulationResult {
+  studentId: number;
+  baselineTargetRole: string;
+  simulatedTargetRole: string;
+  baselineWeeklyHours: number;
+  simulatedWeeklyHours: number;
+  baselineMaxBudget: number;
+  simulatedMaxBudget: number;
+  simulatedDifficulty: DifficultyLevel;
+  baselineRoleMatchPercentage: number;
+  simulatedRoleMatchPercentage: number;
+  roleMatchDelta: number;
+  relevanceBasis: RelevanceBasis;
+  persisted: boolean;
+  items: SimulationItemDelta[];
+}
+
+export interface WeeklyProgressSummary {
+  studentId: number;
+  targetRole: string;
+  totalItems: number;
+  completedItems: number;
+  inProgressItems: number;
+  pendingItems: number;
+  skippedItems: number;
+  completedHours: number;
+  remainingHours: number;
+  remainingWeeks: number;
+  currentRoleMatchPercentage: number;
+  projectedRoleMatchPercentage: number;
+  estimatedSkillCoverageGain: number;
+}
+
+export interface SystemHealthReport {
+  service: string;
+  status: 'UP' | 'DEGRADED' | 'ERROR';
+  timestamp: string;
+  uptimeSeconds: number;
+  detailMode: string;
+  servletRequestCount: number;
+  database: {
+    connected: boolean;
+    productName: string;
+    latencyMs: number;
+    message: string;
+  };
+  recommendationEngine: {
+    available: boolean;
+    status: string;
+    activeThreads?: number;
+    corePoolSize?: number;
+    queuedTasks?: number;
+    catalogOpportunities?: number;
+    trackedTelemetryItems?: number;
+  };
+  session: {
+    active: boolean;
+    authenticated: boolean;
+    activeStudentName?: string;
+    statusCheckCount: number;
+    lastStatusCheck?: string;
+    trackingMode: string;
+  };
 }
 
 export interface SkillGapItem {
